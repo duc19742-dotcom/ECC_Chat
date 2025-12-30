@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Client B</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="chat-container">
+    <h2>Client B</h2>
+
+    <div id="chat-box" class="chat-box"></div>
+
+    <input id="msg" placeholder="Nhập tin nhắn...">
+    <button onclick="sendMsg()">Gửi</button>
+</div>
+
+<script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+<script>
+    let socket = io();
+    socket.emit("join_ab", {user: "B"});
+
+    socket.on("system", data => {
+        document.getElementById("chat-box").innerHTML += 
+            `<p class="sys">${data.msg}</p>`;
+    });
+
+    socket.on("receive_ab", data => {
+        document.getElementById("chat-box").innerHTML += `
+            <div class="bubble">
+                <b>${data.user}:</b> ${data.plain}
+                <br><small>Mã: ${data.cipher}</small>
+            </div>
+        `;
+    });
+
+    function sendMsg() {
+        let m = document.getElementById("msg").value;
+        socket.emit("send_ab", {user: "B", msg: m});
+        document.getElementById("msg").value = "";
+    }
+</script>
+
+</body>
+</html>

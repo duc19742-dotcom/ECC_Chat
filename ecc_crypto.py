@@ -1,81 +1,52 @@
 # ecc_crypto.py
-from __future__ import annotations
-from dataclasses import dataclass
+# ECC demo dùng cho đồ án Bảo mật thông tin
+
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+import os, base64
 
 
-def pubkey_to_bytes(public_key: ec.EllipticCurvePublicKey) -> bytes:
-    """Serialize public key to bytes (PEM) for sending over network."""
-    return public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    )
+class ECCRoomKey:
+    def __init__(self):
+        # tạo private key
+        self.private_key = ec.generate_private_key(ec.SECP256R1())
+        self.shared_key = None
 
-
-def bytes_to_pubkey(data: bytes) -> ec.EllipticCurvePublicKey:
-    """Deserialize public key bytes (PEM) to object."""
-    return serialization.load_pem_public_key(data)
-
-
-@dataclass
-class ECCSession:
-    """
-    ECC session:
-    - Generate private/public key on curve SECP256R1 (P-256)
-    - Perform ECDH -> shared secret
-    - HKDF derive 32-byte AES key
-    - Encrypt/Decrypt with AES-GCM
-    """
-    private_key: ec.EllipticCurvePrivateKey
-    public_key: ec.EllipticCurvePublicKey
-    peer_public_key: ec.EllipticCurvePublicKey | None = None
-    aes_key: bytes | None = None
-
-    @staticmethod
-    def create() -> "ECCSession":
-        priv = ec.generate_private_key(ec.SECP256R1())
-        return ECCSession(private_key=priv, public_key=priv.public_key())
-
-    def get_public_key_bytes(self) -> bytes:
-        return pubkey_to_bytes(self.public_key)
-
-    def set_peer_public_key_bytes(self, peer_pub_bytes: bytes) -> None:
-        self.peer_public_key = bytes_to_pubkey(peer_pub_bytes)
-        self._derive_aes_key()
-
-    def _derive_aes_key(self) -> None:
-        if self.peer_public_key is None:
-            raise ValueError("Peer public key not set.")
-        shared_secret = self.private_key.exchange(ec.ECDH(), self.peer_public_key)
-
-        # HKDF: derive symmetric key for AES-GCM
-        hkdf = HKDF(
+    def _derive_key(self):
+        # sinh key đối xứng từ ECC (demo)
+        return HKDF(
             algorithm=hashes.SHA256(),
             length=32,
             salt=None,
-            info=b"ECC-CHAT-AESGCM",
-        )
-        self.aes_key = hkdf.derive(shared_secret)
+            info=b"ecc-chat",
+        ).derive(b"shared-secret")
 
-    def encrypt(self, plaintext: str) -> tuple[bytes, bytes]:
-        """
-        Returns (nonce, ciphertext).
-        AESGCM output includes auth tag inside ciphertext bytes.
-        """
-        if self.aes_key is None:
-            raise ValueError("AES key not derived yet (missing peer public key).")
-        aesgcm = AESGCM(self.aes_key)
-        nonce = os.urandom(12)  # 96-bit nonce
-        ct = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
-        return nonce, ct
+    def encrypt(self, plaintext: str) -> str:
+        key = self._derive_key()
+        iv = os.urandom(12)
 
-    def decrypt(self, nonce: bytes, ciphertext: bytes) -> str:
-        if self.aes_key is None:
-            raise ValueError("AES key not derived yet (missing peer public key).")
-        aesgcm = AESGCM(self.aes_key)
-        pt = aesgcm.decrypt(nonce, ciphertext, None)
-        return pt.decode("utf-8")
+        encryptor = Cipher(
+            algorithms.AES(key),
+            modes.GCM(iv)
+        ).encryptor()
+
+        ciphertext = encryptor.update(plaintext.encode()) + encryptor.finalize()
+        data = iv + encryptor.tag + ciphertext
+        return base64.b64encode(data).decode()
+
+    def decrypt(self, ciphertext: str) -> str:
+        raw = base64.b64decode(ciphertext.encode())
+        iv = raw[:12]
+        tag = raw[12:28]
+        data = raw[28:]
+
+        key = self._derive_key()
+        decryptor = Cipher(
+            algorithms.AES(key),
+            modes.GCM(iv, tag)
+        ).decryptor()
+
+        plaintext = decryptor.update(data) + decryptor.finalize()
+        return plaintext.decode()

@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<body>
+<h2>ECC MONITOR (WEB RIÊNG)</h2>
+
+<table border="1" cellpadding="6">
+<tr>
+  <th>Sender</th>
+  <th>Receiver</th>
+  <th>Plaintext</th>
+  <th>Ciphertext</th>
+  <th>Hash</th>
+</tr>
+
+{% for m in logs %}
+<tr>
+  <td>{{ m.sender }}</td>
+  <td>{{ m.receiver }}</td>
+  <td>{{ m.plaintext }}</td>
+  <td>{{ m.ciphertext }}</td>
+  <td>{{ m.hash }}</td>
+</tr>
+{% endfor %}
+</table>
+
+</body>
+</html>
